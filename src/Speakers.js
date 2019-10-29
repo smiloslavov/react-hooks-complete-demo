@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useReducer } from "react";
+import React, { useState, useEffect, useContext, useReducer, useCallback, useMemo } from "react";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "../static/site.css";
@@ -8,46 +8,29 @@ import SpeakerData from "./SpeakerData";
 import SpeakerDetail from "./SpeakerDetail";
 import { ConfigContext } from "./App";
 import speakersReducer from "./speakersReducer";
+import useAxiosFetch from "./useAxiosFetch";
+import axios from "axios";
 
 const Speakers = ({}) => {
   const [speakingSaturday, setSpeakingSaturday] = useState(true);
   const [speakingSunday, setSpeakingSunday] = useState(true);
-
+  const { data,
+          isLoading,
+          hasErrored,
+          errorMessage,
+          updateDataRecord} = useAxiosFetch("http://localhost:4000/speakers", []);
   //const [speakerList, setSpeakerList] = useState([]);
-  const [speakerList, dispatch] = useReducer( speakersReducer, []);
-  const [isLoading, setIsLoading] = useState(true);
+  // const [speakerList, dispatch] = useReducer( speakersReducer, []);
+  // const [isLoading, setIsLoading] = useState(true);
 
   const context = useContext(ConfigContext);
-
-  useEffect(() => {
-    setIsLoading(true);
-    new Promise(function(resolve) {
-      setTimeout(function() {
-        resolve();
-      }, 1000);
-    }).then(() => {
-      setIsLoading(false);
-      const speakerListServerFilter = SpeakerData.filter(({ sat, sun }) => {
-        return (speakingSaturday && sat) || (speakingSunday && sun);
-      });
-      //setSpeakerList(speakerListServerFilter);
-      dispatch({
-        type: "setSpeakerList",
-        data: speakerListServerFilter
-      });
-    });
-    return () => {
-      console.log("cleanup");
-    };
-  }, []); // [speakingSunday, speakingSaturday]);
 
   const handleChangeSaturday = () => {
     setSpeakingSaturday(!speakingSaturday);
   };
 
-  const speakerListFiltered = isLoading
-    ? []
-    : speakerList
+  const newSpeakerList = useMemo( () => 
+      data
         .filter(
           ({ sat, sun }) => (speakingSaturday && sat) || (speakingSunday && sun)
         )
@@ -59,28 +42,34 @@ const Speakers = ({}) => {
             return 1;
           }
           return 0;
-        });
+        })
+  , [speakingSaturday, speakingSunday, data]);
+
+  const speakerListFiltered = isLoading ? [] : newSpeakerList;
 
   const handleChangeSunday = () => {
     setSpeakingSunday(!speakingSunday);
   };
 
-  const heartFavoriteHandler = (e, favoriteValue) => {
+  const heartFavoriteHandler = useCallback( (e, speakerRecord) => {
     e.preventDefault();
-    const sessionId = parseInt(e.target.attributes["data-sessionid"].value);
-    // setSpeakerList(speakerList.map(item => {
-    //   if (item.id === sessionId) {
-    //     item.favorite = favoriteValue;
-    //     return item;
-    //   }
-    //   return item;
-    // }));
-    dispatch({
-      type: favoriteValue === true ? "favorite" : "unfavorite",
-      sessionId
-    });
+    const toggledRecord = {...speakerRecord, favorite: !speakerRecord.favorite};
+    axios.put(`http://localhost:4000/speakers/${speakerRecord.id}`, toggledRecord)
+      .then( function(response) {
+        updateDataRecord(toggledRecord);
+      })
+      .catch( function(error) {
+        console.log(error);
+      });
+    
     //console.log("changing session favorte to " + favoriteValue);
-  };
+  }, []);
+
+  if (hasErrored) {
+    return (<div>
+      {errorMessage}&nbsp;"Make sure you have launched 'npm run json-server'"
+    </div>);
+  }
 
   if (isLoading) return <div>Loading...</div>;
 
@@ -120,7 +109,7 @@ const Speakers = ({}) => {
         <div className="row">
           <div className="card-deck">
             {speakerListFiltered.map(
-              ({ id, firstName, lastName, bio, favorite }) => {
+              ({ id, firstName, lastName, sat, sun, bio, favorite }) => {
                 return (
                   <SpeakerDetail
                     key={id}
@@ -130,6 +119,8 @@ const Speakers = ({}) => {
                     firstName={firstName}
                     lastName={lastName}
                     bio={bio}
+                    sat={sat}
+                    sun={sun}
                   />
                 );
               }
